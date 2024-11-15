@@ -458,7 +458,8 @@ class Zigbee extends utils.Adapter {
     }
 
     async onZigbeeEvent(type, entity, message) {
-        this.log.debug(`Type ${type} device ${safeJsonStringify(entity)} incoming event: ${safeJsonStringify(message)}`);
+        //Optimization: Use checkDebugDevice as  entity and message objects can be very large  (ie PTVO 8chanels relay safeJsonStringify(entity) -> 90 kb size)
+        //this.log.debug(`Type ${type} device ${safeJsonStringify(entity)} incoming event: ${safeJsonStringify(message)}`);
 
         const device = entity.device;
         const mappedModel = entity.mapped;
@@ -466,8 +467,14 @@ class Zigbee extends utils.Adapter {
         const cluster = message.cluster;
         const devId = device.ieeeAddr.substr(2);
         const meta = {device};
+        const has_debug = this.stController.checkDebugDevice(devId);
 
-        if (this.stController.checkDebugDevice(devId)) {
+        if (has_debug) {
+           
+            //Full log:
+            //this.log.debug(`ELEVATED: Zigbee Event of Type "${type}" from device: ${safeJsonStringify(entity)}`);
+            //this.log.debug(`ELEVATED: incoming event:${safeJsonStringify(message)}`);
+             
             const shortMessage = {};
             for(const propertyName in message) {
                 shortMessage[propertyName] = message[propertyName];
@@ -475,8 +482,12 @@ class Zigbee extends utils.Adapter {
             shortMessage.device = device.ieeeAddr;
             shortMessage.meta = undefined;
             shortMessage.endpoint = (message.endpoint.ID ? message.endpoint.ID: -1);
-            this.log.warn(`ELEVATED: Zigbee Event of Type ${type} from device ${safeJsonStringify(device.ieeeAddr)}, incoming event: ${safeJsonStringify(shortMessage)}`);
+            this.log.warn(`* ELEVATED: Zigbee Event of Type "${type}" from device "${safeJsonStringify(device.ieeeAddr)}"  incoming event: ${safeJsonStringify(shortMessage)}`);
+        }else
+        {
+	       this.log.debug(`* Zigbee Event of Type ${type} device ${devId}. To show more info fill "debugmessages" state`);
         }
+
         // this assigment give possibility to use iobroker logger in code of the converters, via meta.logger
         meta.logger = this.log;
 
@@ -576,7 +587,13 @@ class Zigbee extends utils.Adapter {
     async processConverters(converters, devId, model, mappedModel, message, meta) {
         for (const converter of converters) {
             const publish = (payload) => {
-                this.log.debug(`Publish ${safeJsonStringify(payload)} to ${safeJsonStringify(devId)}`);
+                
+                if (this.stController.checkDebugDevice(devId)){
+                  this.log.warn(`ELEVATED: ProcessConverters devId:${devId} payload: ${safeJsonStringify(payload)}`); 
+                }else{ 
+                  this.log.debug(`Publish to ${devId}. To show payload fill "debugmessages" state`);
+                }
+
                 if (typeof payload === 'object') {
                     this.publishToState(devId, model, payload);
                 }
@@ -625,7 +642,15 @@ class Zigbee extends utils.Adapter {
         let isGroup = false;
         const has_elevated_debug = this.stController.checkDebugDevice(deviceId)
 
-        this.log.debug(`publishFromState : ${deviceId} ${model} ${safeJsonStringify(stateList)}`);
+        
+        if(has_elevated_debug){
+            this.log.warn(`ELEVATED: PublishFromState : ${deviceId} ${model} stateList: ${safeJsonStringify(stateList)}`);
+        }
+        else{ 
+            this.log.debug(`publishFromState : ${deviceId} ${model}. To show more info fill "debugmessages" state`);
+        }
+
+
         if (model === 'group') {
             isGroup = true;
             deviceId = parseInt(deviceId);
@@ -633,8 +658,13 @@ class Zigbee extends utils.Adapter {
         try {
             const entity = await this.zbController.resolveEntity(deviceId);
 
-            this.log.debug(`entity: ${deviceId} ${model} ${safeJsonStringify(entity)}`);
-
+            //this.log.debug(`entity: ${deviceId} ${model} ${safeJsonStringify(entity)}`);
+            if (this.stController.checkDebugDevice(deviceId)){
+              this.log.warn(`ELEVATED: PublishFromState. ${deviceId} ${model} entity: ${safeJsonStringify(entity)}`);
+            }else{ 
+              this.log.debug(`publishFromState : ${deviceId} ${model}. To show more info fill "debugmessages" state`);
+            }
+            
             const mappedModel = entity.mapped;
 
             if (!mappedModel) {
@@ -1086,7 +1116,9 @@ class Zigbee extends utils.Adapter {
                 if (typeof data === 'string') {
                     logger(`${msg}. ${data}`);
                 } else {
-                    logger(`${msg}. ${safeJsonStringify(data)}`);
+                    if (this.log.level==level)         
+                          logger(`${msg}. ${safeJsonStringify(data)}`)
+                    else  logger(`${msg}. {DATA unavailable. Check log level}`);
                 }
             } else {
                 logger(msg);
